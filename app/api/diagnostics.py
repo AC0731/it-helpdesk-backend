@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from app.models.schemas import DiagnosticRequest
-from app.services.network_tools import run_ping, run_traceroute
+from app.services.network_tools import run_ping, run_traceroute, run_port_scan
 
 router = APIRouter()
 
@@ -13,12 +13,14 @@ async def execute_diagnostics(req: DiagnosticRequest):
 
     ping_result = run_ping(target)
     trace_result = run_traceroute(target)
+    port_result = run_port_scan(target)
 
     return {
         "timestamp": datetime.now().isoformat(),
         "target": target,
         "results": {
             "ping": ping_result.strip(),
-            "traceroute": trace_result.strip()
+            "traceroute": trace_result.strip(),
+            "ports": port_result
         }
     }
