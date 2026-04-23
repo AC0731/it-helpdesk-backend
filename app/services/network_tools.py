@@ -7,22 +7,26 @@ def run_ping(host: str) -> str:
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     command = ['ping', param, '4', host]
     try:
-        output = subprocess.check_output(command, universal_newlines=True)
+        output = subprocess.check_output(command, universal_newlines=True, stderr=subprocess.STDOUT)
         return output
-    except subprocess.CalledProcessError as e:
-        return f"Ping failed: {e}"
+    except Exception as e:
+        # Catching ALL exceptions (like FileNotFoundError) so the API doesn't crash
+        return f"Ping not available on this server: {str(e)}"
 
 def run_traceroute(host: str) -> str:
+    # Render is Linux, so it will try to run 'traceroute'
     command = ['tracert', '-d'] if platform.system().lower() == 'windows' else ['traceroute', '-n']
     if platform.system().lower() == 'windows':
         command.extend(['-h', '15', host])
     else:
         command.extend(['-m', '15', host])
     try:
-        output = subprocess.check_output(command, universal_newlines=True)
+        output = subprocess.check_output(command, universal_newlines=True, stderr=subprocess.STDOUT)
         return output
-    except subprocess.CalledProcessError as e:
-        return f"Traceroute failed: {e}"
+    except Exception as e:
+        return f"Traceroute not available on this server: {str(e)}"
+
+# run_port_scan remains the same as it uses sockets (which work everywhere)
 
 def scan_single_port(host: str, port: int) -> tuple:
     """Checks if a single port is open."""
