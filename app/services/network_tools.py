@@ -1,21 +1,20 @@
+# app/services/network_tools.py
 import subprocess
 import platform
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
 def run_ping(host: str) -> str:
-    # Use -n for Windows, -c for Linux (Render)
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     command = ['ping', param, '4', host]
     try:
-        # We catch ALL Exceptions now so the API never crashes
         output = subprocess.check_output(command, universal_newlines=True, stderr=subprocess.STDOUT)
         return output
     except Exception as e:
-        return f"Ping is restricted on this cloud server. Error: {str(e)}"
+        return f"Ping failed or restricted on this server: {str(e)}"
 
 def run_traceroute(host: str) -> str:
-    # Render is Linux, so it uses 'traceroute'
+    # Use 'tracert' for Windows, 'traceroute' for Linux/Render
     command = ['tracert', '-d'] if platform.system().lower() == 'windows' else ['traceroute', '-n']
     if platform.system().lower() == 'windows':
         command.extend(['-h', '15', host])
@@ -25,7 +24,7 @@ def run_traceroute(host: str) -> str:
         output = subprocess.check_output(command, universal_newlines=True, stderr=subprocess.STDOUT)
         return output
     except Exception as e:
-        return f"Traceroute is restricted on this cloud server. Error: {str(e)}"
+        return f"Traceroute failed or restricted on this server: {str(e)}"
 
 def scan_single_port(host: str, port: int) -> tuple:
     try:
