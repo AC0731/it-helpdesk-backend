@@ -7,7 +7,8 @@ router = APIRouter()
 
 @router.post("/diagnostics")
 async def execute_diagnostics(req: DiagnosticRequest):
-    target = req.target
+    target = req.target.strip()
+
     if not target:
         raise HTTPException(status_code=400, detail="Target IP or domain is required.")
 
