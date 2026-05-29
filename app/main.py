@@ -5,7 +5,7 @@ from app.api import diagnostics, tickets
 app = FastAPI(
     title="IT Helpdesk Diagnostic API",
     description="Backend service for automated network diagnostics.",
-    version="1.1.0" # Version bump to show progress!
+    version="1.1.0"
 )
 
 # CORS Setup
@@ -24,3 +24,8 @@ app.include_router(tickets.router, prefix="/api", tags=["Tickets"])
 @app.get("/")
 async def root():
     return {"status": "online", "message": "IT Helpdesk API is running modularly."}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
