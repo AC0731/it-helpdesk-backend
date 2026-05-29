@@ -111,9 +111,13 @@ Example response:
 
 ```json
 {
-  "success": true,
+  "status": "success",
+  "message": "Ticket TKT-20260529123456 successfully created.",
   "ticket_id": "TKT-20260529123456",
-  "message": "Ticket successfully created in the helpdesk system"
+  "data_logged": {
+    "user": "Demo Agent",
+    "issue_target": "google.com"
+  }
 }
 ```
 
