@@ -1,15 +1,28 @@
-﻿from fastapi import FastAPI
+﻿from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import diagnostics, tickets
 from app.core.config import get_settings
+from app.db.database import init_db
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create database tables on startup for this portfolio API.
+    # A later production version can replace this with Alembic migrations.
+    init_db()
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
     version=settings.app_version,
+    lifespan=lifespan,
 )
 
 # CORS is restricted through environment configuration so production deployments

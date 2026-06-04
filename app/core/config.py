@@ -8,9 +8,10 @@ class Settings:
         "Backend service for IT support diagnostics, ticket workflows, "
         "and deployment-safe troubleshooting automation."
     )
-    app_version: str = "1.2.0"
+    app_version: str = "1.3.0"
 
     allowed_origins: list[str]
+    database_url: str
 
     def __init__(self) -> None:
         origins = os.getenv(
@@ -23,6 +24,8 @@ class Settings:
             for origin in origins.split(",")
             if origin.strip()
         ]
+
+        self.database_url = os.getenv("DATABASE_URL", "sqlite:///./supportops.db")
 
 
 @lru_cache
