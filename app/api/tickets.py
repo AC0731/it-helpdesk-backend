@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+﻿from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ ALLOWED_PRIORITIES = {"low", "medium", "high", "urgent"}
 
 
 def build_ticket_number() -> str:
-    return f"TKT-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+    return f"TKT-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
 
 
 def build_ticket_summary(target: str) -> str:

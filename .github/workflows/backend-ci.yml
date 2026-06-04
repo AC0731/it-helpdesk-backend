@@ -1,0 +1,47 @@
+﻿name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test FastAPI backend
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: sqlite:///./ci_supportops.db
+      ALLOWED_ORIGINS: http://localhost:5173
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python files
+        run: |
+          python -m py_compile app/main.py
+          python -m py_compile app/core/config.py
+          python -m py_compile app/db/database.py
+          python -m py_compile app/db/models.py
+          python -m py_compile app/models/schemas.py
+          python -m py_compile app/api/diagnostics.py
+          python -m py_compile app/api/tickets.py
+          python -m py_compile app/services/network_tools.py
+          python -m py_compile app/services/target_validation.py
+
+      - name: Run tests
+        run: pytest
