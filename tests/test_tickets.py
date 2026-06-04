@@ -77,3 +77,37 @@ def test_ticket_rejects_invalid_status_update(client):
     )
 
     assert update_response.status_code == 400
+
+def test_ticket_analytics_counts_queue_metrics(client):
+    create_ticket(client, target="8.8.8.8", priority="medium")
+    high_response = create_ticket(client, target="1.1.1.1", priority="high")
+    urgent_response = create_ticket(client, target="google.com", priority="urgent")
+
+    high_ticket_id = high_response.json()["ticket_id"]
+    urgent_ticket_id = urgent_response.json()["ticket_id"]
+
+    client.patch(
+        f"/api/tickets/{high_ticket_id}",
+        json={"status": "in_progress"},
+    )
+
+    client.patch(
+        f"/api/tickets/{urgent_ticket_id}",
+        json={"status": "resolved"},
+    )
+
+    response = client.get("/api/tickets/analytics")
+
+    assert response.status_code == 200
+
+    analytics = response.json()
+
+    assert analytics["total"] == 3
+    assert analytics["by_status"]["open"] == 1
+    assert analytics["by_status"]["in_progress"] == 1
+    assert analytics["by_status"]["resolved"] == 1
+    assert analytics["by_status"]["closed"] == 0
+    assert analytics["by_priority"]["medium"] == 1
+    assert analytics["by_priority"]["high"] == 1
+    assert analytics["by_priority"]["urgent"] == 1
+    assert analytics["high_priority_total"] == 2

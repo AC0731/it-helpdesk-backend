@@ -1,4 +1,4 @@
-﻿from datetime import UTC, datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -40,6 +40,39 @@ def serialize_ticket(ticket: Ticket) -> dict:
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
+
+
+def build_ticket_analytics(tickets: list[Ticket]) -> dict:
+    analytics = {
+        "total": 0,
+        "by_status": {
+            "open": 0,
+            "in_progress": 0,
+            "resolved": 0,
+            "closed": 0,
+        },
+        "by_priority": {
+            "low": 0,
+            "medium": 0,
+            "high": 0,
+            "urgent": 0,
+        },
+        "high_priority_total": 0,
+    }
+
+    for ticket in tickets:
+        analytics["total"] += 1
+
+        if ticket.status in analytics["by_status"]:
+            analytics["by_status"][ticket.status] += 1
+
+        if ticket.priority in analytics["by_priority"]:
+            analytics["by_priority"][ticket.priority] += 1
+
+        if ticket.priority in {"high", "urgent"}:
+            analytics["high_priority_total"] += 1
+
+    return analytics
 
 
 @router.post("/ticket")
@@ -85,6 +118,15 @@ async def generate_ticket(
         },
         "ticket": serialize_ticket(saved_ticket),
     }
+
+
+@router.get("/tickets/analytics")
+async def get_ticket_analytics(
+    db: Session = Depends(get_db),
+):
+    tickets = db.query(Ticket).all()
+
+    return build_ticket_analytics(tickets)
 
 
 @router.get("/tickets")
