@@ -8,6 +8,7 @@ from app.db.database import get_db
 from app.db.models import DiagnosticRun
 from app.models.schemas import DiagnosticRequest
 from app.services.network_tools import run_ping, run_port_scan, run_traceroute
+from app.services.target_validation import TargetValidationError, validate_public_target
 
 router = APIRouter()
 
@@ -35,10 +36,10 @@ async def execute_diagnostics(
     req: DiagnosticRequest,
     db: Session = Depends(get_db),
 ):
-    target = req.target.strip()
-
-    if not target:
-        raise HTTPException(status_code=400, detail="Target IP or domain is required.")
+    try:
+        target = validate_public_target(req.target)
+    except TargetValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
     ping_result = run_ping(target).strip()
     trace_result = run_traceroute(target).strip()

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import Ticket
 from app.models.schemas import TicketRequest, TicketStatusUpdate
+from app.services.target_validation import TargetValidationError, validate_public_target
 
 router = APIRouter()
 
@@ -17,9 +18,9 @@ def build_ticket_number() -> str:
     return f"TKT-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
 
 
-def build_ticket_summary(ticket: TicketRequest) -> str:
+def build_ticket_summary(target: str) -> str:
     return (
-        f"Diagnostic ticket created for {ticket.target}. "
+        f"Diagnostic ticket created for {target}. "
         "Review reachability, route diagnostic output, and open port results "
         "before assigning next troubleshooting steps."
     )
@@ -46,6 +47,11 @@ async def generate_ticket(
     ticket: TicketRequest,
     db: Session = Depends(get_db),
 ):
+    try:
+        target = validate_public_target(ticket.target)
+    except TargetValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
     priority = (ticket.priority or "medium").lower().strip()
 
     if priority not in ALLOWED_PRIORITIES:
@@ -57,10 +63,10 @@ async def generate_ticket(
     saved_ticket = Ticket(
         ticket_number=build_ticket_number(),
         user_id=ticket.user_id.strip(),
-        target=ticket.target.strip(),
+        target=target,
         status="open",
         priority=priority,
-        summary=build_ticket_summary(ticket),
+        summary=build_ticket_summary(target),
         ping_data=ticket.ping_data,
         traceroute_data=ticket.traceroute_data,
     )
