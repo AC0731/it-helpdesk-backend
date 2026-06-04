@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -75,6 +76,36 @@ def build_ticket_analytics(tickets: list[Ticket]) -> dict:
     return analytics
 
 
+def validate_status_filter(status: str | None) -> str | None:
+    if not status:
+        return None
+
+    normalized_status = status.lower().strip()
+
+    if normalized_status not in ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status must be one of: {', '.join(sorted(ALLOWED_STATUSES))}.",
+        )
+
+    return normalized_status
+
+
+def validate_priority_filter(priority: str | None) -> str | None:
+    if not priority:
+        return None
+
+    normalized_priority = priority.lower().strip()
+
+    if normalized_priority not in ALLOWED_PRIORITIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Priority must be one of: {', '.join(sorted(ALLOWED_PRIORITIES))}.",
+        )
+
+    return normalized_priority
+
+
 @router.post("/ticket")
 async def generate_ticket(
     ticket: TicketRequest,
@@ -132,21 +163,35 @@ async def get_ticket_analytics(
 @router.get("/tickets")
 async def list_tickets(
     status: str | None = None,
+    priority: str | None = None,
+    search: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
+    normalized_status = validate_status_filter(status)
+    normalized_priority = validate_priority_filter(priority)
+
     query = db.query(Ticket)
 
-    if status:
-        normalized_status = status.lower().strip()
-
-        if normalized_status not in ALLOWED_STATUSES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Status must be one of: {', '.join(sorted(ALLOWED_STATUSES))}.",
-            )
-
+    if normalized_status:
         query = query.filter(Ticket.status == normalized_status)
+
+    if normalized_priority:
+        query = query.filter(Ticket.priority == normalized_priority)
+
+    if search:
+        normalized_search = search.strip()
+
+        if normalized_search:
+            search_pattern = f"%{normalized_search}%"
+            query = query.filter(
+                or_(
+                    Ticket.ticket_number.ilike(search_pattern),
+                    Ticket.target.ilike(search_pattern),
+                    Ticket.user_id.ilike(search_pattern),
+                    Ticket.summary.ilike(search_pattern),
+                )
+            )
 
     tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
 
