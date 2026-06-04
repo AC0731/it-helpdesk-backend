@@ -1,29 +1,37 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api import diagnostics, tickets
+from app.core.config import get_settings
+
+settings = get_settings()
 
 app = FastAPI(
-    title="IT Helpdesk Diagnostic API",
-    description="Backend service for automated network diagnostics.",
-    version="1.1.0"
+    title=settings.app_name,
+    description=settings.app_description,
+    version=settings.app_version,
 )
 
-# CORS Setup
+# CORS is restricted through environment configuration so production deployments
+# only allow trusted frontend origins instead of exposing the API to every domain.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", "https://it-support-portal.vercel.app"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Connect our modular routers
 app.include_router(diagnostics.router, prefix="/api", tags=["Diagnostics"])
 app.include_router(tickets.router, prefix="/api", tags=["Tickets"])
 
+
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "IT Helpdesk API is running modularly."}
+    return {
+        "status": "online",
+        "message": "SupportOps AI Diagnostic API is running.",
+    }
 
 
 @app.get("/health")
