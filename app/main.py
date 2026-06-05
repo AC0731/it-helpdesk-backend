@@ -1,9 +1,9 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import diagnostics, tickets
+from app.api import ai, diagnostics, tickets
 from app.core.config import get_settings
 from app.db.database import init_db
 
@@ -37,6 +37,7 @@ app.add_middleware(
 
 app.include_router(diagnostics.router, prefix="/api", tags=["Diagnostics"])
 app.include_router(tickets.router, prefix="/api", tags=["Tickets"])
+app.include_router(ai.router, prefix="/api", tags=["AI Insights"])
 
 
 @app.get("/")
