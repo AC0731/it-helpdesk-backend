@@ -37,3 +37,66 @@ def test_ai_insight_validates_target(client):
     )
 
     assert response.status_code == 422
+
+
+def test_ai_insight_can_be_saved(client):
+    response = client.post(
+        "/api/ai/insight/save",
+        json={
+            "target": "google.com",
+            "ping_data": "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)",
+            "traceroute_data": "Traceroute command timed out after 20 seconds",
+            "ports": {
+                "80": "Open",
+                "443": "Open",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["status"] == "success"
+    assert body["insight"]["id"] > 0
+    assert body["insight"]["target"] == "google.com"
+    assert body["insight"]["summary"]
+    assert len(body["insight"]["recommended_next_steps"]) > 0
+
+
+def test_saved_ai_insights_can_be_listed(client):
+    client.post(
+        "/api/ai/insight/save",
+        json={
+            "target": "google.com",
+            "ping_data": "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)",
+            "traceroute_data": "Traceroute command timed out after 20 seconds",
+            "ports": {
+                "80": "Open",
+            },
+        },
+    )
+
+    response = client.get("/api/ai/insights")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["count"] == 1
+    assert body["insights"][0]["target"] == "google.com"
+
+
+def test_saved_ai_insight_rejects_missing_ticket(client):
+    response = client.post(
+        "/api/ai/insight/save",
+        json={
+            "ticket_id": "TKT-DOES-NOT-EXIST",
+            "target": "google.com",
+            "ping_data": "Ping OK",
+            "traceroute_data": "Trace OK",
+            "ports": {},
+        },
+    )
+
+    assert response.status_code == 404

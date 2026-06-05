@@ -24,3 +24,7 @@ class AiInsightRequest(BaseModel):
     ping_data: str = Field(default="", max_length=8000)
     traceroute_data: str = Field(default="", max_length=8000)
     ports: dict[str, str] = Field(default_factory=dict)
+
+
+class SavedAiInsightRequest(AiInsightRequest):
+    ticket_id: Optional[str] = Field(default=None, max_length=40)
