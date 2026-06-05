@@ -4,6 +4,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.models.schemas import AiInsightRequest
+from app.services.redaction import redact_ports, redact_sensitive_text
 
 
 def build_local_insight(payload: AiInsightRequest) -> dict:
@@ -49,20 +50,25 @@ def build_local_insight(payload: AiInsightRequest) -> dict:
 
 
 def build_ai_prompt(payload: AiInsightRequest) -> str:
+    safe_target = redact_sensitive_text(payload.target)
+    safe_ping = redact_sensitive_text(payload.ping_data)
+    safe_traceroute = redact_sensitive_text(payload.traceroute_data)
+    safe_ports = redact_ports(payload.ports)
+
     return f"""
 Analyze this IT support diagnostic result and return practical troubleshooting guidance.
 
 Target:
-{payload.target}
+{safe_target}
 
 Ping output:
-{payload.ping_data}
+{safe_ping}
 
 Traceroute output:
-{payload.traceroute_data}
+{safe_traceroute}
 
 Port scan:
-{payload.ports}
+{safe_ports}
 
 Return JSON only with this shape:
 {{
@@ -90,6 +96,30 @@ def extract_response_text(response_body: dict) -> str:
     return ""
 
 
+def normalize_ai_insight(parsed: dict) -> dict:
+    risk_level = parsed.get("risk_level", "medium")
+
+    if risk_level not in {"low", "medium", "high"}:
+        risk_level = "medium"
+
+    probable_causes = parsed.get("probable_causes", [])
+    recommended_next_steps = parsed.get("recommended_next_steps", [])
+
+    if not isinstance(probable_causes, list):
+        probable_causes = []
+
+    if not isinstance(recommended_next_steps, list):
+        recommended_next_steps = []
+
+    return {
+        "provider": "openai",
+        "summary": str(parsed.get("summary", "")),
+        "risk_level": risk_level,
+        "probable_causes": probable_causes,
+        "recommended_next_steps": recommended_next_steps,
+    }
+
+
 async def build_ai_insight(payload: AiInsightRequest) -> dict:
     settings = get_settings()
 
@@ -101,7 +131,8 @@ async def build_ai_insight(payload: AiInsightRequest) -> dict:
         "instructions": (
             "You are an IT support troubleshooting assistant. "
             "Use cautious, practical, non-destructive advice. "
-            "Do not invent facts that are not present in the diagnostic data."
+            "Do not invent facts that are not present in the diagnostic data. "
+            "Never request passwords, secrets, or private credentials."
         ),
         "input": build_ai_prompt(payload),
     }
@@ -122,13 +153,7 @@ async def build_ai_insight(payload: AiInsightRequest) -> dict:
         response_text = extract_response_text(response.json())
         parsed = json.loads(response_text)
 
-        return {
-            "provider": "openai",
-            "summary": parsed.get("summary", ""),
-            "risk_level": parsed.get("risk_level", "medium"),
-            "probable_causes": parsed.get("probable_causes", []),
-            "recommended_next_steps": parsed.get("recommended_next_steps", []),
-        }
+        return normalize_ai_insight(parsed)
     except Exception:
         fallback = build_local_insight(payload)
         fallback["provider"] = "local_rules_fallback"
