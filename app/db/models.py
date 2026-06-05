@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,3 +39,17 @@ class Ticket(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+
+
+class AiInsight(Base):
+    __tablename__ = "ai_insights"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ticket_number: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    target: Mapped[str] = mapped_column(String(255), index=True)
+    provider: Mapped[str] = mapped_column(String(80))
+    risk_level: Mapped[str] = mapped_column(String(40), index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    probable_causes_json: Mapped[str] = mapped_column(Text)
+    recommended_next_steps_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
