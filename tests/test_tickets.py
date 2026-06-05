@@ -111,3 +111,37 @@ def test_ticket_analytics_counts_queue_metrics(client):
     assert analytics["by_priority"]["high"] == 1
     assert analytics["by_priority"]["urgent"] == 1
     assert analytics["high_priority_total"] == 2
+
+def test_ticket_list_filters_by_priority(client):
+    create_ticket(client, target="8.8.8.8", priority="medium")
+    create_ticket(client, target="1.1.1.1", priority="urgent")
+
+    response = client.get("/api/tickets?priority=urgent")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["count"] == 1
+    assert body["tickets"][0]["target"] == "1.1.1.1"
+    assert body["tickets"][0]["priority"] == "urgent"
+
+
+def test_ticket_list_filters_by_search(client):
+    create_ticket(client, target="google.com", priority="medium")
+    create_ticket(client, target="cloudflare.com", priority="medium")
+
+    response = client.get("/api/tickets?search=cloudflare")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["count"] == 1
+    assert body["tickets"][0]["target"] == "cloudflare.com"
+
+
+def test_ticket_list_rejects_invalid_priority_filter(client):
+    response = client.get("/api/tickets?priority=critical")
+
+    assert response.status_code == 400
