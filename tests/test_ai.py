@@ -132,3 +132,29 @@ def test_delete_saved_ai_insight_returns_404_for_missing_record(client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Saved insight not found."
+
+
+def test_saving_same_ai_insight_twice_returns_existing_record(client):
+    payload = {
+        "target": "google.com",
+        "ping_data": "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)",
+        "traceroute_data": "Traceroute command timed out after 20 seconds",
+        "ports": {
+            "80": "Open",
+            "443": "Open",
+        },
+    }
+
+    first_response = client.post("/api/ai/insight/save", json=payload)
+    second_response = client.post("/api/ai/insight/save", json=payload)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["status"] == "success"
+    assert second_response.json()["status"] == "already_saved"
+    assert first_response.json()["insight"]["id"] == second_response.json()["insight"]["id"]
+
+    list_response = client.get("/api/ai/insights")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1

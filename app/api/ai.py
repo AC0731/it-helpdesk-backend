@@ -42,6 +42,29 @@ def serialize_ai_insight(insight: AiInsight) -> dict:
     }
 
 
+def find_duplicate_insight(
+    db: Session,
+    ticket_number: str | None,
+    target: str,
+    generated_insight: dict,
+) -> AiInsight | None:
+    probable_causes_json = json.dumps(generated_insight.get("probable_causes", []))
+    recommended_next_steps_json = json.dumps(generated_insight.get("recommended_next_steps", []))
+
+    return (
+        db.query(AiInsight)
+        .filter(AiInsight.ticket_number == ticket_number)
+        .filter(AiInsight.target == target)
+        .filter(AiInsight.provider == generated_insight.get("provider", "unknown"))
+        .filter(AiInsight.risk_level == generated_insight.get("risk_level", "medium"))
+        .filter(AiInsight.summary == generated_insight.get("summary", ""))
+        .filter(AiInsight.probable_causes_json == probable_causes_json)
+        .filter(AiInsight.recommended_next_steps_json == recommended_next_steps_json)
+        .order_by(AiInsight.created_at.desc())
+        .first()
+    )
+
+
 @router.post("/ai/insight")
 async def generate_ai_insight(
     payload: AiInsightRequest,
@@ -86,6 +109,20 @@ async def save_ai_insight(
     )
 
     generated_insight = await build_ai_insight(normalized_payload)
+
+    duplicate_insight = find_duplicate_insight(
+        db=db,
+        ticket_number=ticket_number,
+        target=target,
+        generated_insight=generated_insight,
+    )
+
+    if duplicate_insight:
+        return {
+            "status": "already_saved",
+            "message": "This insight is already saved.",
+            "insight": serialize_ai_insight(duplicate_insight),
+        }
 
     saved_insight = AiInsight(
         ticket_number=ticket_number,
