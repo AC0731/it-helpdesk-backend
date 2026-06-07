@@ -100,3 +100,35 @@ def test_saved_ai_insight_rejects_missing_ticket(client):
     )
 
     assert response.status_code == 404
+
+def test_saved_ai_insight_can_be_deleted(client):
+    create_response = client.post(
+        "/api/ai/insight/save",
+        json={
+            "target": "google.com",
+            "ping_data": "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)",
+            "traceroute_data": "Traceroute command timed out after 20 seconds",
+            "ports": {
+                "80": "Open",
+            },
+        },
+    )
+
+    insight_id = create_response.json()["insight"]["id"]
+
+    delete_response = client.delete(f"/api/ai/insights/{insight_id}")
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted_id"] == insight_id
+
+    list_response = client.get("/api/ai/insights")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 0
+
+
+def test_delete_saved_ai_insight_returns_404_for_missing_record(client):
+    response = client.delete("/api/ai/insights/999999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Saved insight not found."
