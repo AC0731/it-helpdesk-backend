@@ -125,3 +125,23 @@ async def list_ai_insights(
         "count": len(insights),
         "insights": [serialize_ai_insight(insight) for insight in insights],
     }
+
+
+@router.delete("/ai/insights/{insight_id}")
+async def delete_ai_insight(
+    insight_id: int,
+    db: Session = Depends(get_db),
+):
+    insight = db.query(AiInsight).filter(AiInsight.id == insight_id).first()
+
+    if not insight:
+        raise HTTPException(status_code=404, detail="Saved insight not found.")
+
+    db.delete(insight)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Saved insight deleted.",
+        "deleted_id": insight_id,
+    }
