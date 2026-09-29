@@ -13,6 +13,7 @@ class TicketRequest(BaseModel):
     ping_data: str = Field(..., max_length=12000)
     traceroute_data: str = Field(..., max_length=12000)
     priority: Optional[str] = Field(default="medium", max_length=40)
+    request_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9._:-]{1,64}$")
 
 
 class TicketStatusUpdate(BaseModel):
