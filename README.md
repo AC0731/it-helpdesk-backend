@@ -63,7 +63,7 @@ validate hostname → later pass hostname into network tool → hostname resolve
 
 That leaves a DNS-rebinding window.
 
-A regression test was committed first and failed. The repair then:
+While reviewing the outbound network boundary, I found the hostname could be resolved once during validation and again later by the network tool. I added regression coverage for that bug, then changed the execution path to:
 
 1. added `resolve_public_target_ip()`
 2. revalidated the full DNS answer set at execution time
@@ -76,9 +76,9 @@ The failure and fix remain visible in Git history.
 
 Incident write-up: [`docs/incidents/INC-003-dns-rebinding-hardening.md`](docs/incidents/INC-003-dns-rebinding-hardening.md)
 
-## Controlled failure trace
+## Troubleshooting failure trace
 
-The diagnostic path now has a bounded execution model and explicit behavior for the failure cases that matter operationally:
+While hardening the diagnostic path, I ran into several reliability problems around slow targets, request saturation, persistence failures, and DNS changes. I added a bounded execution model and explicit handling for those failure paths:
 
 - DNS validation and network execution run outside the async event loop
 - concurrent diagnostic jobs are capped
@@ -88,11 +88,11 @@ The diagnostic path now has a bounded execution model and explicit behavior for 
 - database commit failure rolls back instead of creating partial history
 - the same request reference is shown in the UI and copied into the resulting ticket summary
 
-The controlled regression matrix covers blocked/private targets, DNS rebinding, timeout, capacity saturation, persistence failure and output limits.
+The regression suite now covers blocked/private targets, DNS rebinding, timeout, capacity saturation, persistence failure, and output limits.
 
 Case study: [`docs/case-studies/diagnostic-failure-trace.md`](docs/case-studies/diagnostic-failure-trace.md)
 
-**Limit:** this verifies application behavior under injected failures; it is not presented as production-scale load testing.
+**Limit:** these tests verify the application behavior for the covered failure paths; they are not production-scale load testing.
 
 ## Operational controls
 
