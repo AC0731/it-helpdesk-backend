@@ -1,6 +1,6 @@
-# Case study — controlled diagnostic failure trace
+# Case study — diagnostic failure trace
 
-This case study follows one diagnostic request through the SupportOps stack and documents what happens when the normal path breaks.
+While working on SupportOps, I had to troubleshoot several points where a diagnostic request could fail after the UI had already accepted it. This case study follows one request through the stack and shows how those failures are handled.
 
 ## Request path
 
@@ -36,7 +36,7 @@ frontend ticket creation
 ticket summary stores source request reference
 ```
 
-## Controlled failure matrix
+## Failure matrix
 
 | Failure | Expected API behavior | Persistence behavior | Correlation |
 |---|---|---|---|
@@ -64,7 +64,7 @@ The worker pool is bounded before work is submitted. If an HTTP request times ou
 
 ## Database failure scenario
 
-The regression test forces the SQLAlchemy commit to fail after the network result is produced.
+While reviewing the persistence path, I found that a database commit failure needed its own rollback and user-facing state after the network result had already completed. The regression test now covers that case.
 
 Expected result:
 
@@ -74,11 +74,11 @@ Expected result:
 4. API returns 503 with a request reference;
 5. diagnostic history remains empty.
 
-The result is deliberately not presented as successfully saved because persistence is part of the endpoint contract.
+The result is not recorded as successfully saved because persistence is part of the endpoint contract.
 
 ## DNS rebinding scenario
 
-The network-boundary test makes the same hostname resolve to a private address at the execution boundary.
+While reviewing the network boundary, I found that the same hostname could be resolved again at execution time. The regression test checks the case where that later resolution is private.
 
 Expected result:
 
@@ -100,6 +100,6 @@ A successful diagnostic response contains `request_id`. The frontend sends that 
 
 ## Verification boundary
 
-Automated tests use controlled local failures and mocks for failure injection. They verify the application behavior and safety invariants, not internet-scale load capacity.
+Automated tests verify the application behavior and safety invariants for these failure paths. They do not establish internet-scale load capacity.
 
 The live deployment is separately smoke-tested with a public target to confirm the normal UI → API → pinned-address result path.
