@@ -102,4 +102,4 @@ A successful diagnostic response contains `request_id`. The frontend sends that 
 
 Automated tests verify the application behavior and safety invariants for these failure paths. They do not establish internet-scale load capacity.
 
-The live deployment is separately smoke-tested with a public target to confirm the normal UI → API → pinned-address result path.
+The live deployment is separately checked with a public target. The dated result, including the successful diagnostic and a transient first-load dashboard timeout followed by a normal warm recheck, is recorded in [`../evidence/live-smoke-2026-09-29.md`](../evidence/live-smoke-2026-09-29.md).
