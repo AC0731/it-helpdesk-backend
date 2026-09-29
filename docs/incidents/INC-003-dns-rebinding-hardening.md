@@ -13,11 +13,11 @@ A hostile or rapidly changing DNS record could pass the initial public-address c
 
 For a network diagnostic service, that boundary is security-sensitive because the server performs outbound connections on behalf of the requester.
 
-## Reproduction
+## How I found it
 
-A regression test was committed first to model a domain resolving to a private address at the execution boundary. CI failed because the execution layer had no public-address pinning helper.
+While tracing the validation and connection flow, I found that the hostname was resolved before validation and then could be resolved again when the diagnostic actually connected. That meant the address used by the network tool was not guaranteed to be the same address that passed validation. I added regression coverage for that boundary before changing the execution path.
 
-The test also covers mixed DNS answer sets containing both public and private addresses.
+The regression coverage also checks mixed DNS answer sets containing both public and private addresses.
 
 ## Fix
 
@@ -30,7 +30,7 @@ The test also covers mixed DNS answer sets containing both public and private ad
 
 ## Verification
 
-The failing regression commit is preserved in Git history, followed by the hardening commits and passing CI.
+The commit history shows the regression coverage, the hardening change, and the later passing CI run.
 
 ## Lesson
 
