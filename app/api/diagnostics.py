@@ -53,15 +53,25 @@ def log_diagnostic_event(level: int, event: str, **fields) -> None:
     )
 
 
-async def execute_bounded_diagnostic(resolved_ip: str) -> dict:
+def run_safe_diagnostic(raw_target: str) -> dict:
+    target = validate_public_target(raw_target)
+    resolved_ip = resolve_public_target_ip(target)
+    return {
+        "target": target,
+        "resolved_ip": resolved_ip,
+        "results": run_diagnostic_bundle(resolved_ip),
+    }
+
+
+async def execute_bounded_diagnostic(raw_target: str) -> dict:
     if not _DIAGNOSTIC_CAPACITY.acquire(blocking=False):
         raise DiagnosticCapacityError("Diagnostic capacity is currently exhausted.")
 
     loop = asyncio.get_running_loop()
     future = loop.run_in_executor(
         _DIAGNOSTIC_EXECUTOR,
-        run_diagnostic_bundle,
-        resolved_ip,
+        run_safe_diagnostic,
+        raw_target,
     )
     release_in_finally = True
 
@@ -110,9 +120,18 @@ async def execute_diagnostics(
 ):
     request_id = getattr(request.state, "request_id", "unknown")
 
+    log_diagnostic_event(
+        logging.INFO,
+        "diagnostic_started",
+        request_id=request_id,
+        target=req.target,
+    )
+
     try:
-        target = validate_public_target(req.target)
-        resolved_ip = resolve_public_target_ip(target)
+        execution = await execute_bounded_diagnostic(req.target)
+        target = execution["target"]
+        resolved_ip = execution["resolved_ip"]
+        results = execution["results"]
     except (TargetValidationError, NetworkTargetError) as error:
         log_diagnostic_event(
             logging.WARNING,
@@ -122,24 +141,12 @@ async def execute_diagnostics(
             reason=str(error),
         )
         raise HTTPException(status_code=400, detail=str(error)) from error
-
-    log_diagnostic_event(
-        logging.INFO,
-        "diagnostic_started",
-        request_id=request_id,
-        target=target,
-        resolved_ip=resolved_ip,
-    )
-
-    try:
-        results = await execute_bounded_diagnostic(resolved_ip)
     except DiagnosticCapacityError as error:
         log_diagnostic_event(
             logging.WARNING,
             "diagnostic_capacity_rejected",
             request_id=request_id,
-            target=target,
-            resolved_ip=resolved_ip,
+            target=req.target,
         )
         raise HTTPException(
             status_code=503,
@@ -150,8 +157,7 @@ async def execute_diagnostics(
             logging.WARNING,
             "diagnostic_timed_out",
             request_id=request_id,
-            target=target,
-            resolved_ip=resolved_ip,
+            target=req.target,
             timeout_seconds=settings.diagnostic_timeout_seconds,
         )
         raise HTTPException(
@@ -163,8 +169,7 @@ async def execute_diagnostics(
             logging.ERROR,
             "diagnostic_execution_failed",
             request_id=request_id,
-            target=target,
-            resolved_ip=resolved_ip,
+            target=req.target,
             error_type=type(error).__name__,
         )
         raise HTTPException(
