@@ -1,10 +1,58 @@
-# app/services/network_tools.py
+import ipaddress
 import platform
 import shutil
 import socket
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+
+class NetworkTargetError(ValueError):
+    """Raised when a diagnostic target crosses a protected network boundary."""
+
+
+def resolve_public_target_ip(host: str) -> str:
+    """
+    Resolve once at the execution boundary and pin diagnostics to a public IP.
+
+    Rejecting the complete answer set when any private/reserved address appears
+    closes the validation-to-use gap that can otherwise allow DNS rebinding.
+    """
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+
+    if literal is not None:
+        if not literal.is_global:
+            raise NetworkTargetError("Target resolved to a non-public address.")
+        return str(literal)
+
+    try:
+        answers = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise NetworkTargetError(f"Target resolution failed: {exc}") from exc
+
+    addresses = {
+        answer[4][0]
+        for answer in answers
+        if answer and len(answer) > 4 and answer[4]
+    }
+
+    if not addresses:
+        raise NetworkTargetError("Target resolution returned no usable addresses.")
+
+    parsed_addresses = []
+    for address in addresses:
+        parsed = ipaddress.ip_address(address)
+        if not parsed.is_global:
+            raise NetworkTargetError(
+                "Target resolution included a non-public address; diagnostics stopped."
+            )
+        parsed_addresses.append(parsed)
+
+    selected = sorted(parsed_addresses, key=lambda value: (value.version, int(value)))[0]
+    return str(selected)
 
 
 def run_ping(host: str) -> str:
@@ -15,15 +63,14 @@ def run_ping(host: str) -> str:
         command = [command_name, param, "4", host]
 
         try:
-            output = subprocess.check_output(
+            return subprocess.check_output(
                 command,
                 universal_newlines=True,
                 stderr=subprocess.STDOUT,
-                timeout=15
+                timeout=15,
             )
-            return output
-        except Exception as e:
-            return f"Ping command failed or was restricted on this server: {str(e)}"
+        except (subprocess.SubprocessError, OSError) as exc:
+            return f"Ping command failed or was restricted on this server: {exc}"
 
     return run_tcp_reachability_check(host)
 
@@ -33,68 +80,57 @@ def run_tcp_reachability_check(host: str) -> str:
     output_lines = [
         "System ping command is not available in this server environment.",
         "Running fallback TCP reachability check instead.",
-        ""
+        "",
+        f"Pinned public address: {host}",
     ]
 
-    try:
-        resolved_ip = socket.gethostbyname(host)
-        output_lines.append(f"Resolved host: {host} -> {resolved_ip}")
-    except Exception as e:
-        output_lines.append(f"DNS resolution failed for {host}: {str(e)}")
-        return "\n".join(output_lines)
-
     for port in ports_to_test:
-        start_time = time.time()
+        start_time = time.monotonic()
 
         try:
             with socket.create_connection((host, port), timeout=3):
-                latency_ms = round((time.time() - start_time) * 1000, 2)
+                latency_ms = round((time.monotonic() - start_time) * 1000, 2)
                 output_lines.append(f"Port {port}: reachable in {latency_ms} ms")
-        except Exception:
+        except OSError:
             output_lines.append(f"Port {port}: not reachable or filtered")
 
     return "\n".join(output_lines)
 
 
 def run_traceroute(host: str) -> str:
-    command_name = "tracert" if platform.system().lower() == "windows" else "traceroute"
+    is_windows = platform.system().lower() == "windows"
+    command_name = "tracert" if is_windows else "traceroute"
 
     if shutil.which(command_name):
-        command = ["tracert", "-d"] if platform.system().lower() == "windows" else ["traceroute", "-n"]
-
-        if platform.system().lower() == "windows":
-            command.extend(["-h", "15", host])
-        else:
-            command.extend(["-m", "15", host])
+        command = ["tracert", "-d", "-h", "15", host] if is_windows else [
+            "traceroute",
+            "-n",
+            "-m",
+            "15",
+            host,
+        ]
 
         try:
-            output = subprocess.check_output(
+            return subprocess.check_output(
                 command,
                 universal_newlines=True,
                 stderr=subprocess.STDOUT,
-                timeout=20
+                timeout=20,
             )
-            return output
-        except Exception as e:
-            return f"Traceroute command failed or was restricted on this server: {str(e)}"
+        except (subprocess.SubprocessError, OSError) as exc:
+            return f"Traceroute command failed or was restricted on this server: {exc}"
 
     return (
         "Traceroute command is not available in this server environment.\n"
-        "This usually happens on cloud deployments where traceroute is not installed "
-        "or where network diagnostic commands are restricted.\n"
-        "The app is still able to perform DNS resolution, TCP reachability checks, "
-        "and port scanning."
+        "The app can continue with DNS validation, TCP reachability, and port checks."
     )
 
 
-def scan_single_port(host: str, port: int) -> tuple:
+def scan_single_port(host: str, port: int) -> tuple[int, bool]:
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.2)
-        result = sock.connect_ex((host, port))
-        sock.close()
-        return port, result == 0
-    except Exception:
+        with socket.create_connection((host, port), timeout=0.5):
+            return port, True
+    except OSError:
         return port, False
 
 
@@ -102,8 +138,11 @@ def run_port_scan(host: str) -> dict:
     common_ports = [21, 22, 80, 443, 3389]
     results = {}
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(scan_single_port, host, port) for port in common_ports]
+    with ThreadPoolExecutor(max_workers=len(common_ports)) as executor:
+        futures = [
+            executor.submit(scan_single_port, host, port)
+            for port in common_ports
+        ]
 
         for future in futures:
             port, is_open = future.result()
