@@ -92,6 +92,8 @@ The regression suite now covers blocked/private targets, DNS rebinding, timeout,
 
 Case study: [`docs/case-studies/diagnostic-failure-trace.md`](docs/case-studies/diagnostic-failure-trace.md)
 
+Dated live deployment check: [`docs/evidence/live-smoke-2026-09-29.md`](docs/evidence/live-smoke-2026-09-29.md)
+
 **Limit:** these tests verify the application behavior for the covered failure paths; they are not production-scale load testing.
 
 ## Operational controls
