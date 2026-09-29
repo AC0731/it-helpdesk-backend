@@ -31,17 +31,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Compile Python files
+      - name: Compile Python package
+        run: python -m compileall app
+
+      - name: Audit runtime dependencies
         run: |
-          python -m py_compile app/main.py
-          python -m py_compile app/core/config.py
-          python -m py_compile app/db/database.py
-          python -m py_compile app/db/models.py
-          python -m py_compile app/models/schemas.py
-          python -m py_compile app/api/diagnostics.py
-          python -m py_compile app/api/tickets.py
-          python -m py_compile app/services/network_tools.py
-          python -m py_compile app/services/target_validation.py
+          python -m pip install pip-audit
+          pip-audit -r requirements.txt
 
       - name: Run tests
         run: pytest
