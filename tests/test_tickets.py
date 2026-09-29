@@ -1,4 +1,4 @@
-﻿def create_ticket(client, target="8.8.8.8", priority="medium"):
+﻿def create_ticket(client, target="8.8.8.8", priority="medium", request_id=None):
     return client.post(
         "/api/ticket",
         json={
@@ -7,6 +7,7 @@
             "ping_data": "Ping OK",
             "traceroute_data": "Traceroute OK",
             "priority": priority,
+            "request_id": request_id,
         },
     )
 
@@ -145,3 +146,14 @@ def test_ticket_list_rejects_invalid_priority_filter(client):
     response = client.get("/api/tickets?priority=critical")
 
     assert response.status_code == 400
+
+
+def test_ticket_summary_preserves_diagnostic_request_reference(client):
+    response = create_ticket(
+        client,
+        target="8.8.8.8",
+        request_id="CASE-42",
+    )
+
+    assert response.status_code == 200
+    assert "CASE-42" in response.json()["ticket"]["summary"]

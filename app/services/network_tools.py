@@ -6,9 +6,31 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from app.core.config import get_settings
+
+settings = get_settings()
+
 
 class NetworkTargetError(ValueError):
     """Raised when a diagnostic target crosses a protected network boundary."""
+
+
+def bound_output(value: str) -> str:
+    limit = settings.diagnostic_output_limit
+
+    if len(value) <= limit:
+        return value
+
+    omitted = len(value) - limit
+    return f"{value[:limit]}\n...[truncated {omitted} characters]"
+
+
+def run_diagnostic_bundle(host: str) -> dict:
+    return {
+        "ping": bound_output(run_ping(host).strip()),
+        "traceroute": bound_output(run_traceroute(host).strip()),
+        "ports": run_port_scan(host),
+    }
 
 
 def resolve_public_target_ip(host: str) -> str:
@@ -63,12 +85,16 @@ def run_ping(host: str) -> str:
         command = [command_name, param, "4", host]
 
         try:
-            return subprocess.check_output(
-                command,
-                universal_newlines=True,
-                stderr=subprocess.STDOUT,
-                timeout=15,
+            return bound_output(
+                subprocess.check_output(
+                    command,
+                    universal_newlines=True,
+                    stderr=subprocess.STDOUT,
+                    timeout=15,
+                )
             )
+        except subprocess.TimeoutExpired:
+            return "Ping timed out after 15 seconds."
         except (subprocess.SubprocessError, OSError) as exc:
             return f"Ping command failed or was restricted on this server: {exc}"
 
@@ -111,12 +137,16 @@ def run_traceroute(host: str) -> str:
         ]
 
         try:
-            return subprocess.check_output(
-                command,
-                universal_newlines=True,
-                stderr=subprocess.STDOUT,
-                timeout=20,
+            return bound_output(
+                subprocess.check_output(
+                    command,
+                    universal_newlines=True,
+                    stderr=subprocess.STDOUT,
+                    timeout=20,
+                )
             )
+        except subprocess.TimeoutExpired:
+            return "Traceroute timed out after 20 seconds."
         except (subprocess.SubprocessError, OSError) as exc:
             return f"Traceroute command failed or was restricted on this server: {exc}"
 

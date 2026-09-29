@@ -76,6 +76,24 @@ The failure and fix remain visible in Git history.
 
 Incident write-up: [`docs/incidents/INC-003-dns-rebinding-hardening.md`](docs/incidents/INC-003-dns-rebinding-hardening.md)
 
+## Controlled failure trace
+
+The diagnostic path now has a bounded execution model and explicit behavior for the failure cases that matter operationally:
+
+- DNS validation and network execution run outside the async event loop
+- concurrent diagnostic jobs are capped
+- an overall deadline returns HTTP 504
+- saturated capacity returns HTTP 503 without queuing unbounded work
+- command output is truncated before storage
+- database commit failure rolls back instead of creating partial history
+- the same request reference is shown in the UI and copied into the resulting ticket summary
+
+The controlled regression matrix covers blocked/private targets, DNS rebinding, timeout, capacity saturation, persistence failure and output limits.
+
+Case study: [`docs/case-studies/diagnostic-failure-trace.md`](docs/case-studies/diagnostic-failure-trace.md)
+
+**Limit:** this verifies application behavior under injected failures; it is not presented as production-scale load testing.
+
 ## Operational controls
 
 ### Request correlation

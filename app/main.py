@@ -50,6 +50,7 @@ app.add_middleware(
 async def add_operational_headers(request: Request, call_next):
     request_id = normalize_request_id(request.headers.get("x-request-id"))
     started = perf_counter()
+    request.state.request_id = request_id
 
     response = await call_next(request)
 

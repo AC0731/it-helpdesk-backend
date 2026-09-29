@@ -19,9 +19,15 @@ def build_ticket_number() -> str:
     return f"TKT-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
 
 
-def build_ticket_summary(target: str) -> str:
+def build_ticket_summary(target: str, request_id: str | None = None) -> str:
+    correlation = (
+        f" Source diagnostic request: {request_id}."
+        if request_id
+        else ""
+    )
     return (
-        f"Diagnostic ticket created for {target}. "
+        f"Diagnostic ticket created for {target}."
+        f"{correlation} "
         "Review reachability, route diagnostic output, and open port results "
         "before assigning next troubleshooting steps."
     )
@@ -130,7 +136,7 @@ async def generate_ticket(
         target=target,
         status="open",
         priority=priority,
-        summary=build_ticket_summary(target),
+        summary=build_ticket_summary(target, ticket.request_id),
         ping_data=ticket.ping_data,
         traceroute_data=ticket.traceroute_data,
     )
