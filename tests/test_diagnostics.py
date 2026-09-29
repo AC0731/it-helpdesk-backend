@@ -6,9 +6,13 @@ from sqlalchemy.orm import Session
 def test_diagnostics_creates_history_entry(client, monkeypatch):
     async def fake_execute(_target):
         return {
-            "ping": "Ping OK",
-            "traceroute": "Traceroute OK",
-            "ports": {"80": "Open", "443": "Open"},
+            "target": "8.8.8.8",
+            "resolved_ip": "8.8.8.8",
+            "results": {
+                "ping": "Ping OK",
+                "traceroute": "Traceroute OK",
+                "ports": {"80": "Open", "443": "Open"},
+            },
         }
 
     monkeypatch.setattr(
@@ -93,9 +97,13 @@ def test_diagnostics_returns_capacity_state(client, monkeypatch):
 def test_persistence_failure_does_not_create_history(client, monkeypatch):
     async def fake_execute(_target):
         return {
-            "ping": "Ping OK",
-            "traceroute": "Traceroute OK",
-            "ports": {"443": "Open"},
+            "target": "8.8.8.8",
+            "resolved_ip": "8.8.8.8",
+            "results": {
+                "ping": "Ping OK",
+                "traceroute": "Traceroute OK",
+                "ports": {"443": "Open"},
+            },
         }
 
     monkeypatch.setattr(
