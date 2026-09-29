@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import DiagnosticRun
 from app.models.schemas import DiagnosticRequest
-from app.services.network_tools import run_ping, run_port_scan, run_traceroute
+from app.services.network_tools import (
+    NetworkTargetError,
+    resolve_public_target_ip,
+    run_ping,
+    run_port_scan,
+    run_traceroute,
+)
 from app.services.target_validation import TargetValidationError, validate_public_target
 
 router = APIRouter()
@@ -38,12 +44,15 @@ async def execute_diagnostics(
 ):
     try:
         target = validate_public_target(req.target)
-    except TargetValidationError as error:
-        raise HTTPException(status_code=400, detail=str(error))
+        resolved_ip = resolve_public_target_ip(target)
+    except (TargetValidationError, NetworkTargetError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
-    ping_result = run_ping(target).strip()
-    trace_result = run_traceroute(target).strip()
-    port_result = run_port_scan(target)
+    # Diagnostics operate on the pinned public address. The original target is
+    # retained for the support record and UI.
+    ping_result = run_ping(resolved_ip).strip()
+    trace_result = run_traceroute(resolved_ip).strip()
+    port_result = run_port_scan(resolved_ip)
 
     diagnostic_run = DiagnosticRun(
         target=target,
@@ -60,6 +69,7 @@ async def execute_diagnostics(
         "diagnostic_id": diagnostic_run.id,
         "timestamp": datetime.now().isoformat(),
         "target": target,
+        "resolved_ip": resolved_ip,
         "results": {
             "ping": ping_result,
             "traceroute": trace_result,
