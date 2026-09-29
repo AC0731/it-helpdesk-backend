@@ -1,116 +1,133 @@
-# SupportOps AI Diagnostic API - Backend
+# SupportOps Diagnostic API — Backend
 
-FastAPI backend for a support operations diagnostic platform. The API runs network diagnostic checks, stores diagnostic and ticket records, creates troubleshooting insights, and keeps saved insight history for review.
+FastAPI backend for a support operations platform that combines network diagnostics, ticket workflows, troubleshooting insight generation, persistence, operational telemetry, and security controls.
 
-## Project Purpose
+The design treats outbound diagnostics as a security-sensitive boundary rather than a simple utility endpoint.
 
-This backend demonstrates practical backend engineering for IT support workflows:
+## Live system
 
-- API design with FastAPI
-- diagnostic workflow automation
-- persistent support ticket operations
-- database-backed diagnostic and ticket history
-- public target validation
-- troubleshooting insight generation
-- sensitive-text redaction before external AI calls
-- request rate limiting for insight endpoints
-- automated backend testing
-- deployment-aware error handling
+- Frontend: https://it-support-diagnostic-portal.vercel.app
+- API: https://it-support-api-g0b4.onrender.com
+- API docs: https://it-support-api-g0b4.onrender.com/docs
+- Frontend repository: https://github.com/AC0731/it-helpdesk-frontend
 
-The backend is paired with a React/Vite frontend deployed on Vercel.
-
-Frontend:
+## Architecture
 
 ```text
-https://it-support-diagnostic-portal.vercel.app
+React/Vite client
+      │
+      ▼
+FastAPI
+ ├── request correlation / timing
+ ├── target validation
+ ├── DNS execution-boundary validation
+ ├── pinned public-IP diagnostics
+ ├── ticket + diagnostic persistence
+ ├── AI redaction / rate limiting
+ ├── liveness + database readiness
+ └── security headers
+      │
+      ├── SQLAlchemy / SQLite
+      └── optional external AI provider
 ```
 
-Backend API docs:
+## Security model
+
+The most important boundary is **user input → outbound network connection**.
+
+Controls include:
+
+- reject URLs, credentials, paths, wildcards, malformed targets
+- block localhost/private/link-local/reserved/non-global addresses
+- validate domain resolution before execution
+- resolve again at the execution boundary
+- reject mixed public/private DNS answer sets
+- pin network diagnostics to the approved public IP
+- keep the original hostname only for display/support records
+- redact sensitive text before external AI calls
+- generic 5xx responses to the browser
+- bounded AI rate-limit state
+- production dependency vulnerability auditing
+
+See [`docs/security-model.md`](docs/security-model.md).
+
+## Security incident: DNS rebinding / TOCTOU
+
+A security review found that target validation and target use were separated.
+
+The original flow:
 
 ```text
-https://it-support-api-g0b4.onrender.com/docs
+validate hostname → later pass hostname into network tool → hostname resolves again
 ```
 
-## Tech Stack
+That leaves a DNS-rebinding window.
 
-- Python
-- FastAPI
-- Pydantic
-- SQLAlchemy
-- SQLite for local development
-- Uvicorn
-- httpx
-- Pytest
-- GitHub Actions
-- Render
+A regression test was committed first and failed. The repair then:
 
-## Core Features
+1. added `resolve_public_target_ip()`
+2. revalidated the full DNS answer set at execution time
+3. rejected the target if any returned address was non-public
+4. selected a deterministic public address
+5. pinned ping/traceroute/TCP/port checks to that IP
+6. exposed `resolved_ip` in the API response
 
-- Public domain/IP diagnostic checks
-- DNS resolution
-- Ping or TCP reachability fallback
-- Traceroute or deployment-safe fallback messaging
-- Common port checks for 21, 22, 80, 443, and 3389
-- Persistent diagnostic history
-- Persistent support ticket creation
-- Ticket status updates
-- Ticket priority handling
-- Ticket filtering by status, priority, and search
-- Ticket analytics endpoint
-- Troubleshooting insight generation
-- Saved insight history
-- Sensitive-text redaction before AI prompt generation
-- Basic request rate limiting for insight endpoints
-- Health check endpoint for deployment monitoring
+The failure and fix remain visible in Git history.
 
-## API Endpoints
+Incident write-up: [`docs/incidents/INC-003-dns-rebinding-hardening.md`](docs/incidents/INC-003-dns-rebinding-hardening.md)
 
-### Root
+## Operational controls
 
-```http
-GET /
+### Request correlation
+
+Every response carries:
+
+```text
+X-Request-ID
+X-Process-Time-Ms
 ```
 
-Returns basic API status.
+A safe caller-provided request ID is preserved; otherwise the API generates one.
 
-### Health Check
+### Security headers
+
+Responses include:
+
+```text
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+```
+
+### Health model
 
 ```http
-GET /health
+GET /health/live
+GET /health/ready
+```
+
+`/health/live` verifies the process is responding.
+
+`/health/ready` executes `SELECT 1` against the database so traffic can be withheld when persistence is unavailable.
+
+See [`docs/observability.md`](docs/observability.md).
+
+## Diagnostics
+
+```http
+POST /api/diagnostics
 ```
 
 Example response:
 
 ```json
 {
-  "status": "ok"
-}
-```
-
-### Run Diagnostics
-
-```http
-POST /api/diagnostics
-```
-
-Example request:
-
-```json
-{
-  "target": "google.com"
-}
-```
-
-Example response structure:
-
-```json
-{
-  "diagnostic_id": 1,
-  "timestamp": "2026-06-05T00:00:00",
-  "target": "google.com",
+  "diagnostic_id": 42,
+  "target": "example.com",
+  "resolved_ip": "93.184.216.34",
   "results": {
-    "ping": "Reachability output here",
-    "traceroute": "Route diagnostic output here",
+    "ping": "...",
+    "traceroute": "...",
     "ports": {
       "21": "Closed",
       "22": "Closed",
@@ -122,308 +139,121 @@ Example response structure:
 }
 ```
 
-### Diagnostic History
+If platform-level `ping` or `traceroute` tools are unavailable, the API degrades cleanly instead of leaking raw process failures.
 
-```http
-GET /api/diagnostics/history
+## Ticket operations
+
+The API supports:
+
+- ticket creation
+- priority
+- status transitions
+- searchable/filterable queue
+- analytics
+- case detail retrieval
+- persisted diagnostic history
+
+## Troubleshooting insights
+
+Insight handling includes:
+
+- redaction before external provider use
+- local-rules fallback when no provider key is configured
+- saved history
+- duplicate protection
+- bounded rate limiting
+- server-side provider credentials only
+
+## Rate-limit hardening
+
+The in-memory AI rate limiter is synchronized with a lock and bounds the number of stored client keys.
+
+It:
+
+- removes stale clients
+- evicts the oldest client when the cap is reached
+- prevents unlimited key growth
+- has regression coverage for pruning and bounding behavior
+
+For horizontally scaled production, this would be replaced by Redis or another shared rate-limit backend.
+
+## Testing
+
+```bash
+pytest
+python -m compileall app
 ```
 
-Returns recent diagnostic runs.
+Coverage includes:
 
-### Generate Support Ticket
+- target validation
+- DNS rebinding boundary
+- mixed DNS-answer rejection
+- deterministic public IP selection
+- diagnostics
+- tickets/analytics
+- insight fallback/redaction
+- rate limiting
+- request ID behavior
+- security headers
+- database readiness
 
-```http
-POST /api/ticket
-```
+## CI and dependency security
 
-Example request:
-
-```json
-{
-  "user_id": "Demo Agent",
-  "target": "google.com",
-  "ping_data": "Reachability output here",
-  "traceroute_data": "Route diagnostic output here",
-  "priority": "medium"
-}
-```
-
-Example response structure:
-
-```json
-{
-  "status": "success",
-  "message": "Ticket TKT-20260605123456000000 successfully created.",
-  "ticket_id": "TKT-20260605123456000000",
-  "data_logged": {
-    "user": "Demo Agent",
-    "issue_target": "google.com"
-  }
-}
-```
-
-### List Tickets
-
-```http
-GET /api/tickets
-```
-
-Supported query parameters:
+Backend CI runs:
 
 ```text
-status=open
-priority=medium
-search=google
-limit=50
+pip install -r requirements.txt
+python -m compileall app
+pip-audit -r requirements.txt
+pytest
 ```
 
-### Ticket Detail
+The audit pass found vulnerable pinned versions of AnyIO, IDNA, and Starlette. Those packages were upgraded, then CI was rerun successfully.
 
-```http
-GET /api/tickets/{ticket_id}
-```
+Final verified backend CI:  
+https://github.com/AC0731/it-helpdesk-backend/actions/runs/36566543153
 
-Returns a single ticket by ticket number.
+## Incident/runbook documentation
 
-### Update Ticket Status
+- [Security model](docs/security-model.md)
+- [Observability](docs/observability.md)
+- [DNS rebinding hardening incident](docs/incidents/INC-003-dns-rebinding-hardening.md)
+- [API degradation runbook](docs/runbooks/api-degradation.md)
 
-```http
-PATCH /api/tickets/{ticket_id}
-```
+## Tech stack
 
-Example request:
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- SQLite
+- Uvicorn
+- httpx
+- Pytest
+- GitHub Actions
+- Render
 
-```json
-{
-  "status": "in_progress"
-}
-```
+## Environment
 
-Allowed statuses:
-
-```text
-open
-in_progress
-resolved
-closed
-```
-
-### Ticket Analytics
-
-```http
-GET /api/tickets/analytics
-```
-
-Returns ticket totals by status and priority.
-
-### Generate Insight
-
-```http
-POST /api/ai/insight
-```
-
-Example request:
-
-```json
-{
-  "target": "google.com",
-  "ping_data": "Reachability output here",
-  "traceroute_data": "Route diagnostic output here",
-  "ports": {
-    "80": "Open",
-    "443": "Open"
-  }
-}
-```
-
-Example response structure:
-
-```json
-{
-  "target": "google.com",
-  "insight": {
-    "provider": "local_rules",
-    "summary": "Diagnostics were reviewed for google.com.",
-    "risk_level": "low",
-    "probable_causes": [
-      "The target may be reachable if common web ports are open."
-    ],
-    "recommended_next_steps": [
-      "Confirm the target value is correct."
-    ]
-  }
-}
-```
-
-When `OPENAI_API_KEY` is not configured, the endpoint returns a local rules-based fallback. This keeps local development and demos working without requiring an external provider.
-
-### Save Insight
-
-```http
-POST /api/ai/insight/save
-```
-
-Generates and stores an insight record. The record can optionally be linked to a ticket.
-
-Example request:
-
-```json
-{
-  "ticket_id": "TKT-20260605123456000000",
-  "target": "google.com",
-  "ping_data": "Reachability output here",
-  "traceroute_data": "Route diagnostic output here",
-  "ports": {
-    "80": "Open",
-    "443": "Open"
-  }
-}
-```
-
-### List Saved Insights
-
-```http
-GET /api/ai/insights
-```
-
-Supported query parameters:
-
-```text
-ticket_id=TKT-20260605123456000000
-limit=25
-```
-
-## Safety and Validation
-
-The backend validates diagnostic targets before running diagnostics or saving insight records. Localhost, private network addresses, reserved IP ranges, malformed URLs, and internal targets are blocked.
-
-Insight requests include:
-
-- sensitive text redaction before prompt generation
-- email, API key, token, password, credentialed URL, and long-ID redaction
-- response normalization
-- basic in-memory rate limiting
-- fallback behavior when the external provider is unavailable or not configured
-
-## Cloud Deployment Behavior
-
-Some hosted server environments do not provide system-level commands like `ping` or `traceroute`.
-
-Instead of returning raw server errors, this backend handles those cases gracefully:
-
-- If `ping` is unavailable, the API runs a TCP reachability check.
-- If `traceroute` is unavailable, the API returns a clean explanation.
-- DNS resolution and port checks still work.
-
-This keeps the deployed app stable in local and hosted environments.
-
-## Environment Variables
-
-Create a local `.env` file or configure variables in the deployment platform.
-
-```text
+```env
 ALLOWED_ORIGINS=http://localhost:5173,https://it-support-diagnostic-portal.vercel.app
 DATABASE_URL=sqlite:///./supportops.db
 OPENAI_API_KEY=
 AI_MODEL=
 ```
 
-Notes:
+## Engineering decisions
 
-- Keep real API keys out of git.
-- Use `.env.example` as the safe template.
-- If `OPENAI_API_KEY` is empty, insight endpoints use local fallback logic.
+**Validate at the point of use.** DNS validation is repeated at the outbound execution boundary.
 
-## Run Locally
+**Fail closed on ambiguous DNS.** Mixed public/private answers are rejected rather than selecting the convenient address.
 
-Create and activate a virtual environment:
+**Evidence should be correlatable.** Request IDs and processing time make user reports easier to connect with backend behavior.
 
-```bash
-python -m venv venv
-```
+**Readiness is not liveness.** A process can be alive while its database is unavailable.
 
-Windows PowerShell:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Start the API:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The API will run at:
-
-```text
-http://127.0.0.1:8000
-```
-
-Local API docs:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Testing
-
-Run all backend tests:
-
-```bash
-pytest
-```
-
-Run Python compile checks:
-
-```bash
-python -m py_compile app/api/ai.py
-python -m py_compile app/api/diagnostics.py
-python -m py_compile app/api/tickets.py
-python -m py_compile app/core/config.py
-python -m py_compile app/db/database.py
-python -m py_compile app/db/models.py
-python -m py_compile app/models/schemas.py
-python -m py_compile app/services/ai_insights.py
-python -m py_compile app/services/network_tools.py
-python -m py_compile app/services/rate_limit.py
-python -m py_compile app/services/redaction.py
-python -m py_compile app/services/target_validation.py
-```
-
-Current automated coverage includes:
-
-- health checks
-- diagnostic endpoint behavior
-- target validation
-- persistent ticket creation
-- ticket listing and filtering
-- ticket status updates
-- ticket analytics
-- insight fallback behavior
-- saved insight history
-- redaction behavior
-- rate-limit helper behavior
-
-## Repository Pair
-
-Frontend repo:
-
-```text
-AC0731/it-helpdesk-frontend
-```
-
-Backend repo:
-
-```text
-AC0731/it-helpdesk-backend
-```
+**Dependency security is part of delivery.** Runtime dependency auditing is a CI gate, not a one-time manual check.
 
 ## Author
 
